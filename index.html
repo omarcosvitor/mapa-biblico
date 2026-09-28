@@ -1,0 +1,649 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mapa Bíblico Interativo — Livro de Josué</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+<style>
+  :root{
+    --bg:#0f1115; --panel:#161a21; --panel-2:#1d222b; --border:#2a3140;
+    --text:#e7ebf3; --text-dim:#9aa5b8; --accent:#4d8dff; --accent-2:#ff8c00;
+    --ok:#3ecf8e; --warn:#e0a94c;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font-family:"Segoe UI",Arial,sans-serif;}
+  #app{display:flex;height:100vh;width:100vw;overflow:hidden;}
+  #sidebar{width:420px;min-width:320px;max-width:46vw;background:var(--panel);border-right:1px solid var(--border);
+    display:flex;flex-direction:column;overflow:hidden;}
+  #map{flex:1;height:100%;background:#0b0d11;}
+  header{padding:14px 16px 10px;border-bottom:1px solid var(--border);}
+  header h1{font-size:15px;margin:0 0 2px;font-weight:600;letter-spacing:.2px;}
+  header p{margin:0;font-size:11.5px;color:var(--text-dim);}
+
+  #selectRow{display:flex;gap:8px;padding:10px 16px;border-bottom:1px solid var(--border);}
+  #selectRow select{flex:1;background:var(--panel-2);color:var(--text);border:1px solid var(--border);
+    border-radius:6px;padding:7px 8px;font-size:12.5px;}
+  #navBtns{display:flex;gap:6px;padding:0 16px 10px;border-bottom:1px solid var(--border);}
+  #navBtns button{flex:1;background:var(--panel-2);color:var(--text);border:1px solid var(--border);
+    border-radius:6px;padding:6px 4px;font-size:12px;cursor:pointer;}
+  #navBtns button:hover{border-color:var(--accent);}
+  #navBtns button:disabled{opacity:.35;cursor:default;}
+
+  #timeline{display:flex;gap:6px;overflow-x:auto;padding:10px 16px;border-bottom:1px solid var(--border);
+    background:var(--panel-2);}
+  .tl-item{flex:0 0 auto;min-width:54px;text-align:center;padding:6px 6px;border-radius:6px;cursor:pointer;
+    border:1px solid var(--border);font-size:10.5px;color:var(--text-dim);background:var(--panel);}
+  .tl-item b{display:block;font-size:12px;color:var(--text);}
+  .tl-item.active{border-color:var(--accent);background:rgba(77,141,255,.15);color:var(--text);}
+
+  #content{flex:1;overflow-y:auto;padding:16px;}
+  .badge{display:inline-block;font-size:10.5px;padding:2px 8px;border-radius:20px;background:rgba(77,141,255,.15);
+    color:var(--accent);border:1px solid rgba(77,141,255,.4);margin-bottom:8px;}
+  .badge.warn{background:rgba(224,169,76,.15);color:var(--warn);border-color:rgba(224,169,76,.45);}
+  h2.card-title{font-size:17px;margin:0 0 4px;}
+  .verses{font-size:12px;color:var(--text-dim);margin-bottom:14px;}
+
+  .names{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;}
+  .name-box{background:var(--panel-2);border:1px solid var(--border);border-radius:8px;padding:9px 10px;}
+  .name-box span{display:block;font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--text-dim);margin-bottom:3px;}
+  .name-box strong{font-size:13px;}
+
+  section.block{margin-bottom:14px;}
+  section.block h3{font-size:11.5px;text-transform:uppercase;letter-spacing:.6px;color:var(--text-dim);
+    margin:0 0 6px;border-bottom:1px solid var(--border);padding-bottom:4px;}
+  section.block p{font-size:13px;line-height:1.55;margin:0;color:var(--text);}
+
+  .dist-row{display:flex;gap:10px;background:var(--panel-2);border:1px solid var(--border);border-radius:8px;
+    padding:10px;font-size:12.5px;}
+  .dist-row div{flex:1;}
+  .dist-row span{display:block;font-size:10px;color:var(--text-dim);text-transform:uppercase;}
+
+  .hyp-select{display:flex;flex-direction:column;gap:6px;}
+  .hyp-option{display:flex;gap:8px;align-items:flex-start;background:var(--panel-2);border:1px solid var(--border);
+    border-radius:8px;padding:8px 10px;cursor:pointer;}
+  .hyp-option.selected{border-color:var(--accent);}
+  .hyp-dot{width:12px;height:12px;border-radius:50%;margin-top:3px;flex:0 0 auto;}
+  .hyp-option strong{font-size:12.5px;display:block;}
+  .hyp-option p{font-size:11.5px;color:var(--text-dim);margin:2px 0 0;line-height:1.4;}
+
+  footer.note{font-size:10.5px;color:var(--text-dim);padding:10px 16px;border-top:1px solid var(--border);
+    background:var(--panel-2);}
+
+  .leaflet-popup-content-wrapper{background:#1d222b;color:#e7ebf3;}
+  .leaflet-popup-tip{background:#1d222b;}
+  .leaflet-popup-content b{font-size:13px;}
+  .leaflet-popup-content small{color:#9aa5b8;}
+
+  ::-webkit-scrollbar{width:8px;height:8px;}
+  ::-webkit-scrollbar-thumb{background:#2a3140;border-radius:4px;}
+
+  @media (max-width:820px){
+    #app{flex-direction:column;}
+    #sidebar{width:100%;max-width:100%;height:52vh;}
+    #map{height:48vh;}
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="sidebar">
+    <header>
+      <h1>Mapa Bíblico Interativo</h1>
+      <p>Livro de Josué — jornada geográfica capítulo a capítulo</p>
+    </header>
+
+    <div id="selectRow">
+      <select id="bookSelect"><option value="Josué">Josué</option></select>
+      <select id="chapterSelect"></select>
+    </div>
+    <div id="navBtns">
+      <button id="prevBtn">◀ Anterior</button>
+      <button id="nextBtn">Próximo ▶</button>
+    </div>
+
+    <div id="timeline"></div>
+
+    <div id="content"></div>
+
+    <footer class="note">
+      Coordenadas de sítios em disputa são aproximadas e refletem hipóteses arqueológicas concorrentes, não posições confirmadas. Distâncias são estimativas em linha reta (Haversine), não a rota real percorrida.
+    </footer>
+  </div>
+  <div id="map"></div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<script>
+/* ==========================================================================
+   BASE DE DADOS — Livro de Josué
+   Cada entrada representa um capítulo (ou grupo de capítulos com conteúdo
+   territorial/listas) com relevância geográfica direta. Coordenadas de
+   locais consensuais seguem identificações arqueológicas majoritárias;
+   locais disputados trazem um array "hypotheses" com alternativas.
+   ========================================================================== */
+const biblicalData = [
+  {
+    order: 1, book: "Josué", chapter: "1", verses: "1:1-9",
+    title: "Chamado de Josué em Sitim",
+    ancientName: "Sitim (Abel-Sitim)",
+    modernName: "Tell el-Hammam (hipótese líder) — planícies de Moabe",
+    country: "Jordânia",
+    era: "Após a morte de Moisés, Israel acampa nas planícies de Moabe, na margem oriental do rio Jordão, em frente a Jericó. É o ponto de partida da conquista de Canaã, então fragmentada em cidades-estado sob influência residual egípcia (fim da Idade do Bronze Final).",
+    modern: "Região do Vale do Jordão na Jordânia atual, próxima à foz do rio, zona agrícola e de sítios arqueológicos parcialmente escavados.",
+    archaeology: "Tell el-Hammam é o principal candidato, com ocupação identificada na Idade do Bronze; a identificação com Sitim, porém, não é unânime.",
+    coords: [31.8408, 35.6294],
+    hypotheses: [
+      { id: "trad", label: "Tell el-Hammam", color: "#4d8dff",
+        description: "Grande tell com ocupação contínua na Idade do Bronze; localização mais aceita para Abel-Sitim." },
+      { id: "alt", label: "Tell Kefrein", color: "#ff8c00",
+        description: "Sítio menor próximo, proposto por alguns arqueólogos como alternativa a Tell el-Hammam." }
+    ]
+  },
+  {
+    order: 2, book: "Josué", chapter: "2", verses: "2:1-24",
+    title: "Os espias e Raabe em Jericó",
+    ancientName: "Jericó (Yeriḥo)",
+    modernName: "Tell es-Sultan, Jericó",
+    country: "Cisjordânia (Palestina)",
+    era: "Jericó é uma das cidades habitadas mais antigas do mundo, murada, num oásis fértil junto a nascentes de água doce — ponto estratégico de entrada em Canaã pelo vale do Jordão.",
+    modern: "Cidade moderna de Jericó (Cisjordânia), com o tell arqueológico de Tell es-Sultan preservado como parque arqueológico nos arredores.",
+    archaeology: "Escavações de Kathleen Kenyon (1950s) mostraram destruição de muralhas em camadas do Bronze Médio/Final; a datação exata compatível com o relato bíblico é debatida entre arqueólogos.",
+    coords: [31.8706, 35.4437],
+    hypotheses: []
+  },
+  {
+    order: 3, book: "Josué", chapter: "3-4", verses: "3:1 – 4:24",
+    title: "Travessia do rio Jordão",
+    ancientName: "Gilgal (acampamento junto ao Jordão)",
+    modernName: "Khirbet el-Mafjar (hipótese), perto de Jericó",
+    country: "Cisjordânia (Palestina)",
+    era: "As águas do Jordão se retêm e o povo atravessa em terreno seco, montando doze pedras memoriais em Gilgal — primeiro acampamento israelita a oeste do rio.",
+    modern: "Planície ao norte da Jericó moderna; a localização exata de Gilgal nunca foi confirmada por escavação decisiva.",
+    archaeology: "Nenhum sítio identificado com certeza; a proposta mais comum situa Gilgal entre Jericó e o Jordão, mas sem achados diagnósticos.",
+    coords: [31.8756, 35.4599],
+    hypotheses: [
+      { id: "trad", label: "Khirbet el-Mafjar", color: "#4d8dff",
+        description: "Proximidade tradicional a Jericó, citada por parte da arqueologia bíblica." },
+      { id: "alt", label: "Khirbet en-Nitla", color: "#ff8c00",
+        description: "Sítio alternativo mais a sul, também na planície do Jordão." }
+    ]
+  },
+  {
+    order: 4, book: "Josué", chapter: "5", verses: "5:1-15",
+    title: "Circuncisão e primeira Páscoa em Canaã",
+    ancientName: "Gilgal",
+    modernName: "Khirbet el-Mafjar (hipótese), perto de Jericó",
+    country: "Cisjordânia (Palestina)",
+    era: "Em Gilgal, a nova geração é circuncidada e celebra a Páscoa com produtos da terra; o maná cessa. O 'príncipe do exército do Senhor' aparece a Josué.",
+    modern: "Mesma área de planície próxima a Jericó descrita no capítulo anterior.",
+    archaeology: "Ver capítulo 3-4 — identificação de Gilgal permanece hipotética.",
+    coords: [31.8756, 35.4599],
+    hypotheses: [
+      { id: "trad", label: "Khirbet el-Mafjar", color: "#4d8dff", description: "Hipótese tradicional, ver capítulo 3-4." },
+      { id: "alt", label: "Khirbet en-Nitla", color: "#ff8c00", description: "Hipótese alternativa, ver capítulo 3-4." }
+    ]
+  },
+  {
+    order: 5, book: "Josué", chapter: "6", verses: "6:1-27",
+    title: "Queda das muralhas de Jericó",
+    ancientName: "Jericó (Yeriḥo)",
+    modernName: "Tell es-Sultan, Jericó",
+    country: "Cisjordânia (Palestina)",
+    era: "Após sete dias de marcha ritual ao redor da cidade, as muralhas de Jericó caem; a cidade é consagrada à destruição (ḥerem), poupando-se apenas Raabe e sua família.",
+    modern: "Parque arqueológico de Tell es-Sultan, no perímetro da Jericó moderna.",
+    archaeology: "Camadas de destruição por incêndio e colapso de muralhas foram documentadas; a controvérsia está na datação — Kenyon situa a destruição c. 1550 a.C. (cedo demais para a cronologia bíblica tradicional), enquanto Bryant Wood defende uma redatação para c. 1400 a.C.",
+    coords: [31.8706, 35.4437],
+    hypotheses: []
+  },
+  {
+    order: 6, book: "Josué", chapter: "7", verses: "7:1-26",
+    title: "Pecado de Acã e derrota em Ai",
+    ancientName: "Vale de Acor / Ai (Ai, 'a ruína')",
+    modernName: "et-Tell (hipótese tradicional)",
+    country: "Cisjordânia (Palestina)",
+    era: "Israel é derrotado em seu primeiro ataque a Ai por causa do pecado oculto de Acã, que é executado no Vale de Acor, perto de Jericó.",
+    modern: "Área rural a leste de Ramallah, próxima à vila palestina de Deir Dibwan.",
+    archaeology: "Et-Tell mostra ocupação apenas na Idade do Bronze Antigo, com um hiato até o período do Ferro I — problema cronológico que motivou hipóteses alternativas (ver capítulo 8).",
+    coords: [31.9256, 35.2761],
+    hypotheses: [
+      { id: "trad", label: "et-Tell", color: "#4d8dff",
+        description: "Identificação tradicional desde o século XIX; grande tell, mas sem ocupação no período esperado." },
+      { id: "alt", label: "Khirbet el-Maqatir", color: "#ff8c00",
+        description: "Proposta por Bryant Wood (Associates for Biblical Research): sítio menor, 1,4 km a oeste, com evidências de ocupação e destruição compatíveis com o Bronze Final." }
+    ]
+  },
+  {
+    order: 7, book: "Josué", chapter: "8", verses: "8:1-35",
+    title: "Conquista de Ai e altar no Monte Ebal",
+    ancientName: "Ai / Monte Ebal (perto de Siquém)",
+    modernName: "Khirbet el-Maqatir (hipótese) e Monte Ebal",
+    country: "Cisjordânia (Palestina)",
+    era: "Com uma emboscada, Israel toma Ai e a incendeia; em seguida, Josué constrói um altar no Monte Ebal e lê a Lei entre os montes Ebal e Gerizim, junto a Siquém.",
+    modern: "Ai fica perto de Deir Dibwan; o Monte Ebal domina a cidade moderna de Nablus (Siquém antiga).",
+    archaeology: "No Monte Ebal, Adam Zertal escavou uma estrutura de pedra (1980s) interpretada por ele como o altar de Josué — interpretação debatida por outros arqueólogos, que a leem como fortificação ou torre de vigia.",
+    coords: [32.2367, 35.2853],
+    hypotheses: []
+  },
+  {
+    order: 8, book: "Josué", chapter: "9", verses: "9:1-27",
+    title: "O engano dos gibeonitas",
+    ancientName: "Gibeão (Gib'on)",
+    modernName: "El-Jib",
+    country: "Cisjordânia (Palestina)",
+    era: "Os habitantes de Gibeão, temendo a conquista, se disfarçam de viajantes distantes e obtêm um tratado de paz de Israel por engano, tornando-se servos permanentes.",
+    modern: "Vila palestina de El-Jib, ao norte de Jerusalém, próxima ao aeroporto de Qalandiya.",
+    archaeology: "Escavações de James Pritchard (1950-60s) confirmaram Gibeão como grande centro urbano do Ferro I-II, incluindo o famoso sistema de poço em espiral e jarros com o nome 'Gibeon' inscrito — identificação consensual.",
+    coords: [31.8497, 35.1811],
+    hypotheses: []
+  },
+  {
+    order: 9, book: "Josué", chapter: "10", verses: "10:1-15",
+    title: "Batalha de Gibeão — o sol parado",
+    ancientName: "Gibeão",
+    modernName: "El-Jib",
+    country: "Cisjordânia (Palestina)",
+    era: "Uma coalizão de cinco reis amorreus ataca Gibeão por sua aliança com Israel; Josué marcha a noite toda desde Gilgal e vence a batalha, no episódio em que 'o sol se deteve'.",
+    modern: "El-Jib, norte de Jerusalém.",
+    archaeology: "Ver capítulo 9 — identificação consensual.",
+    coords: [31.8497, 35.1811],
+    hypotheses: []
+  },
+  {
+    order: 10, book: "Josué", chapter: "10", verses: "10:16-27",
+    title: "Os cinco reis na caverna de Maquedá",
+    ancientName: "Maquedá",
+    modernName: "Localização incerta — Sefelá da Judeia",
+    country: "Israel",
+    era: "Os cinco reis fugitivos se escondem numa caverna em Maquedá; Josué os captura, executa e expõe seus corpos, ordenando o fechamento da caverna com pedras.",
+    modern: "Região da Sefelá (planície baixa da Judeia), entre Jerusalém e a costa.",
+    archaeology: "Maquedá nunca foi identificada com segurança; candidatos incluem Khirbet el-Qom e Tell el-Hesi, mas nenhum tem confirmação epigráfica.",
+    coords: [31.5194, 34.9803],
+    hypotheses: [
+      { id: "trad", label: "Khirbet el-Qom", color: "#4d8dff",
+        description: "Sítio na Sefelá com ocupação da Idade do Ferro; proposta mais citada." },
+      { id: "alt", label: "Tell el-Hesi", color: "#ff8c00",
+        description: "Grande tell escavado desde Flinders Petrie (1890), proposto por alguns como Maquedá ou Eglom." }
+    ]
+  },
+  {
+    order: 11, book: "Josué", chapter: "10", verses: "10:29-30",
+    title: "Conquista de Libna",
+    ancientName: "Libna",
+    modernName: "Localização incerta — Sefelá",
+    country: "Israel",
+    era: "Josué prossegue a campanha do sul, tomando Libna após Maquedá, na mesma sequência de conquistas rápidas na baixada da Judeia.",
+    modern: "Candidatos ficam na Sefelá ocidental, sem cidade moderna diretamente sobreposta.",
+    archaeology: "Identificação incerta; Tell Bornat (Tel Burna) é uma das propostas mais discutidas atualmente.",
+    coords: [31.5928, 34.7986],
+    hypotheses: [
+      { id: "trad", label: "Tel Burna (Tell Bornat)", color: "#4d8dff",
+        description: "Escavações recentes revelaram um centro administrativo da Idade do Ferro na região atribuída a Libna." }
+    ]
+  },
+  {
+    order: 12, book: "Josué", chapter: "10", verses: "10:31-32",
+    title: "Cerco e conquista de Laquis",
+    ancientName: "Laquis (Lakish)",
+    modernName: "Tell ed-Duweir / Tel Lachish",
+    country: "Israel",
+    era: "Laquis, a segunda cidade mais importante de Judá em períodos posteriores, cai após dois dias de cerco — um dos raros episódios de conquista bíblica com forte respaldo arqueológico posterior (embora referente a destruições de séculos diferentes).",
+    modern: "Parque Nacional de Tel Lachish, próximo a Kiryat Gat, Israel.",
+    archaeology: "Um dos tells mais escavados de Israel, com camadas de destruição associadas tanto à campanha assíria de Senaqueribe (701 a.C., documentada nos relevos de Nínive) quanto a eventos anteriores; a camada específica da conquista de Josué é debatida.",
+    coords: [31.5642, 34.8481],
+    hypotheses: []
+  },
+  {
+    order: 13, book: "Josué", chapter: "10", verses: "10:33-35",
+    title: "Derrota de Gezer e conquista de Eglom",
+    ancientName: "Eglom",
+    modernName: "Localização incerta — Sefelá",
+    country: "Israel",
+    era: "Após repelir o rei de Gezer, que veio em socorro de Laquis, Josué segue e conquista Eglom no mesmo dia.",
+    modern: "Sem sobreposição direta com cidade moderna; região da Sefelá meridional.",
+    archaeology: "Tell el-Hesi já foi a hipótese padrão para Eglom; hoje muitos arqueólogos preferem Tell Beit Mirsim ou Tell Nagila, sem consenso.",
+    coords: [31.5464, 34.6942],
+    hypotheses: [
+      { id: "trad", label: "Tell el-Hesi", color: "#4d8dff", description: "Hipótese clássica, hoje mais associada a Laquis ou Maquedá por alguns autores." },
+      { id: "alt", label: "Tell Nagila", color: "#ff8c00", description: "Alternativa proposta com base em ocupação do Bronze Final na região." }
+    ]
+  },
+  {
+    order: 14, book: "Josué", chapter: "10", verses: "10:36-37",
+    title: "Conquista de Hebrom",
+    ancientName: "Hebrom (Quiriate-Arba)",
+    modernName: "Tell Rumeida, Hebron/Al-Khalil",
+    country: "Cisjordânia (Palestina)",
+    era: "Cidade associada aos patriarcas (sepultura de Abraão na caverna de Macpela), tomada na campanha do sul e mais tarde herdada por Calebe (Js 14-15).",
+    modern: "Cidade de Hebron (Al-Khalil), uma das mais antigas do mundo continuamente habitadas, com o Santuário dos Patriarcas (Haram al-Khalil/Caverna de Macpela) como marco central, hoje sob forte tensão política.",
+    archaeology: "Tell Rumeida mostra ocupação desde o Bronze Médio; identificação com a Hebrom bíblica é amplamente aceita.",
+    coords: [31.5326, 35.0998],
+    hypotheses: []
+  },
+  {
+    order: 15, book: "Josué", chapter: "10", verses: "10:38-39",
+    title: "Conquista de Debir",
+    ancientName: "Debir (Quiriate-Sefer)",
+    modernName: "Khirbet Rabud (hipótese líder)",
+    country: "Cisjordânia (Palestina)",
+    era: "Última cidade importante da campanha do sul, também disputada mais tarde entre Calebe e Otniel (Js 15:15-17).",
+    modern: "Área rural ao sul de Hebron.",
+    archaeology: "Khirbet Rabud, escavada por Moshe Kochavi (1968), tem ocupação robusta no Bronze Final/Ferro I e é hoje a identificação preferida, substituindo a antiga hipótese de Tell Beit Mirsim.",
+    coords: [31.4361, 35.0122],
+    hypotheses: [
+      { id: "trad", label: "Khirbet Rabud", color: "#4d8dff", description: "Identificação preferida atualmente, com estratigrafia compatível." },
+      { id: "alt", label: "Tell Beit Mirsim", color: "#ff8c00", description: "Hipótese mais antiga (W. F. Albright), hoje minoritária." }
+    ]
+  },
+  {
+    order: 16, book: "Josué", chapter: "11", verses: "11:1-15",
+    title: "Campanha do norte e queda de Hazor",
+    ancientName: "Hazor / Águas de Merom",
+    modernName: "Tel Hazor, Alta Galileia",
+    country: "Israel",
+    era: "Uma coalizão de reis do norte, liderada por Jabim de Hazor, é derrotada junto às Águas de Merom; Hazor, 'cabeça de todos esses reinos', é a única cidade incendiada nessa campanha.",
+    modern: "Parque Nacional de Tel Hazor, próximo a Rosh Pina, norte de Israel.",
+    archaeology: "Maior tell da Idade do Bronze em Israel (área de ~80 hectares na cidade baixa), com camada de destruição maciça por fogo no Bronze Final atribuída por muitos escavadores (Yigael Yadin, Amnon Ben-Tor) à conquista israelita — um dos casos com melhor correlação arqueológica do livro de Josué.",
+    coords: [33.0181, 35.5658],
+    hypotheses: []
+  },
+  {
+    order: 17, book: "Josué", chapter: "13", verses: "13:8-33",
+    title: "Territórios transjordânicos (Rúben, Gade e Manassés oriental)",
+    ancientName: "Hesbom, capital regional amorreia",
+    modernName: "Tell Hesban",
+    country: "Jordânia",
+    era: "Antes da travessia do Jordão, os territórios de Rúben, Gade e metade de Manassés já haviam sido conquistados de Seom e Ogue; este capítulo formaliza a divisão a leste do rio, com Hesbom como referência central.",
+    modern: "Sítio arqueológico de Tell Hesban, perto de Madaba, Jordânia.",
+    archaeology: "Ocupação confirmada do Ferro I em diante; debate sobre coincidir exatamente com a capital de Seom mencionada no texto.",
+    coords: [31.7986, 35.7955],
+    hypotheses: []
+  },
+  {
+    order: 18, book: "Josué", chapter: "14-15", verses: "14:6-15; 15:13-19",
+    title: "Herança de Calebe em Hebrom e Debir",
+    ancientName: "Hebrom (herança de Calebe)",
+    modernName: "Tell Rumeida, Hebron/Al-Khalil",
+    country: "Cisjordânia (Palestina)",
+    era: "Aos 85 anos, Calebe reivindica Hebrom como cumprimento da promessa feita por Moisés, expulsando os anaquins; sua filha Acsa recebe Debir mediante a conquista de Otniel.",
+    modern: "Cidade de Hebron; ver arqueologia no capítulo 10.",
+    archaeology: "Ver capítulo 10 (Hebrom) e capítulo 10/Debir.",
+    coords: [31.5326, 35.0998],
+    hypotheses: []
+  },
+  {
+    order: 19, book: "Josué", chapter: "16-17", verses: "16:1-10; 17:1-18",
+    title: "Territórios de Efraim e Manassés",
+    ancientName: "Siquém, centro dos territórios josefitas",
+    modernName: "Tell Balata, Nablus",
+    country: "Cisjordânia (Palestina)",
+    era: "As tribos descendentes de José (Efraim e Manassés) recebem a região central montanhosa, com Siquém — entre os montes Ebal e Gerizim — como seu núcleo simbólico e administrativo.",
+    modern: "Tell Balata é um sítio arqueológico dentro da área metropolitana de Nablus, cidade palestina moderna.",
+    archaeology: "Escavações alemãs e americanas (1913-1930s, 1950-60s) confirmam Siquém como importante cidade cananeia do Bronze Médio/Final, com muralhas ciclópicas e um templo-fortaleza.",
+    coords: [32.2133, 35.2856],
+    hypotheses: []
+  },
+  {
+    order: 20, book: "Josué", chapter: "18-19", verses: "18:1-10; 19:1-51",
+    title: "Sorteio em Silo e territórios das demais tribos",
+    ancientName: "Silo (Shiloh), sede do Tabernáculo",
+    modernName: "Khirbet Seilun",
+    country: "Cisjordânia (Palestina)",
+    era: "Com a terra já parcialmente conquistada, Josué reúne a assembleia em Silo, onde o Tabernáculo é erguido, e distribui por sorteio os territórios restantes entre Benjamim, Simeão, Zebulom, Issacar, Aser, Naftali e Dã.",
+    modern: "Sítio arqueológico de Khirbet Seilun, na Cisjordânia, com parque arqueológico israelense administrado na área.",
+    archaeology: "Escavações dinamarquesas e israelenses (1920s-1980s) revelam ocupação do Ferro I com evidências de culto, compatível com a função de centro religioso pré-monárquico.",
+    coords: [32.0553, 35.2892],
+    hypotheses: []
+  },
+  {
+    order: 21, book: "Josué", chapter: "20-21", verses: "20:1-9; 21:1-45",
+    title: "Cidades de refúgio e cidades levíticas",
+    ancientName: "Quedes da Galileia (uma das seis cidades de refúgio)",
+    modernName: "Tel Kedesh",
+    country: "Israel",
+    era: "São designadas seis cidades de refúgio para homicidas involuntários — Quedes, Siquém e Hebrom a oeste do Jordão; Bezer, Ramote-Gileade e Golã a leste — além de 48 cidades levíticas distribuídas entre todas as tribos (capítulo 21).",
+    modern: "Tel Kedesh, norte de Israel, próximo à fronteira com o Líbano; as demais cidades de refúgio transjordânicas (Bezer, Ramote-Gileade, Golã) têm identificação bem menos segura.",
+    archaeology: "Quedes tem ocupação confirmada desde o Bronze Médio; já Bezer, Ramote-Gileade e Golã carecem de identificação arqueológica consensual — suas coordenadas em mapas bíblicos são aproximações.",
+    coords: [33.1147, 35.5386],
+    hypotheses: []
+  },
+  {
+    order: 22, book: "Josué", chapter: "22", verses: "22:1-34",
+    title: "O altar 'Testemunha' junto ao Jordão",
+    ancientName: "Região de Gelilote, margem oriental do Jordão",
+    modernName: "Localização incerta — vale do Jordão, lado jordaniano",
+    country: "Jordânia",
+    era: "As tribos transjordânicas (Rúben, Gade e meia-Manassés), liberadas para voltar às suas terras, erguem um grande altar junto ao Jordão como memorial de unidade — gesto quase interpretado como apostasia até ser esclarecido.",
+    modern: "Vale do Jordão do lado jordaniano, sem sítio arqueológico específico identificado com o episódio.",
+    archaeology: "Nenhuma estrutura foi associada com segurança a este altar; permanece um episódio sem correlato arqueológico direto.",
+    coords: [32.1000, 35.5600],
+    hypotheses: []
+  },
+  {
+    order: 23, book: "Josué", chapter: "23", verses: "23:1-16",
+    title: "Discurso de despedida de Josué",
+    ancientName: "Siquém (por tradição, ligado ao capítulo 24)",
+    modernName: "Tell Balata, Nablus",
+    country: "Cisjordânia (Palestina)",
+    era: "Já idoso, Josué reúne os líderes de Israel para um discurso de advertência sobre fidelidade à aliança — tradicionalmente associado ao mesmo cenário da assembleia de Siquém do capítulo seguinte, embora o texto não nomeie o local explicitamente.",
+    modern: "Ver Siquém, capítulo 16-17.",
+    archaeology: "Ver Siquué / Tell Balata, capítulo 16-17.",
+    coords: [32.2133, 35.2856],
+    hypotheses: []
+  },
+  {
+    order: 24, book: "Josué", chapter: "24", verses: "24:1-33",
+    title: "Aliança em Siquém e morte de Josué",
+    ancientName: "Siquém; sepultamento em Timnate-Sera",
+    modernName: "Tell Balata (Siquém) e Khirbet Tibnah (Timnate-Sera)",
+    country: "Cisjordânia (Palestina)",
+    era: "Josué convoca todas as tribos a Siquém para uma renovação solene da aliança ('quanto a mim e a minha casa, serviremos ao Senhor'), erige uma pedra memorial e, ao final do livro, morre aos 110 anos, sendo sepultado em sua propriedade em Timnate-Sera, nos montes de Efraim.",
+    modern: "Siquém corresponde a Tell Balata (Nablus); Timnate-Sera é identificada com Khirbet Tibnah, na Cisjordânia.",
+    archaeology: "Siquém: ver capítulo 16-17. Timnate-Sera (Khirbet Tibnah) tem ocupação atestada da Idade do Ferro, mas a tumba de Josué não foi arqueologicamente confirmada — a tradição local marca um sítio venerado (Kifl Haris) sem validação escavatória.",
+    coords: [32.2133, 35.2856],
+    hypotheses: [
+      { id: "trad", label: "Siquém (Tell Balata)", color: "#4d8dff",
+        description: "Local da assembleia e renovação da aliança." },
+      { id: "alt", label: "Timnate-Sera (Khirbet Tibnah)", color: "#ff8c00",
+        description: "Local de sepultamento de Josué, nos montes de Efraim." }
+    ]
+  }
+];
+
+/* ==========================================================================
+   ESTADO E UTILITÁRIOS
+   ========================================================================== */
+let currentIndex = 0;
+const selectedHyp = {}; // order -> hypothesis id
+
+function haversineKm(a, b){
+  const R = 6371;
+  const dLat = (b[0]-a[0]) * Math.PI/180;
+  const dLon = (b[1]-a[1]) * Math.PI/180;
+  const lat1 = a[0]*Math.PI/180, lat2 = b[0]*Math.PI/180;
+  const h = Math.sin(dLat/2)**2 + Math.cos(lat1)*Math.cos(lat2)*Math.sin(dLon/2)**2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+
+function activeCoords(entry){
+  if (entry.hypotheses && entry.hypotheses.length){
+    const hid = selectedHyp[entry.order] || entry.hypotheses[0].id;
+    const h = entry.hypotheses.find(x => x.id === hid) || entry.hypotheses[0];
+    return h.coords || entry.coords;
+  }
+  return entry.coords;
+}
+
+/* ==========================================================================
+   MAPA (Leaflet)
+   ========================================================================== */
+const map = L.map('map', { zoomControl: true }).setView([31.9, 35.3], 8);
+
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+  subdomains: 'abc', maxZoom: 19
+}).addTo(map);
+
+let routeLine = null;
+const markers = {}; // order -> marker
+
+function markerIcon(color){
+  return L.divIcon({
+    className: '',
+    html: `<div style="width:16px;height:16px;border-radius:50%;background:${color};border:2px solid #fff;box-shadow:0 0 4px rgba(0,0,0,.6);"></div>`,
+    iconSize: [16,16], iconAnchor: [8,8]
+  });
+}
+
+function buildMap(){
+  Object.values(markers).forEach(m => map.removeLayer(m));
+  for (const key in markers) delete markers[key];
+  if (routeLine) map.removeLayer(routeLine);
+
+  const routeCoords = [];
+  biblicalData.forEach(entry => {
+    const coords = activeCoords(entry);
+    routeCoords.push(coords);
+    const color = (entry.hypotheses && entry.hypotheses.length)
+      ? (entry.hypotheses.find(h => h.id === (selectedHyp[entry.order] || entry.hypotheses[0].id)) || entry.hypotheses[0]).color
+      : '#4d8dff';
+    const marker = L.marker(coords, { icon: markerIcon(color) }).addTo(map);
+    marker.bindPopup(`<b>Js ${entry.chapter}</b> — ${entry.title}<br><small>${entry.ancientName}</small>`);
+    marker.on('click', () => selectByOrder(entry.order));
+    markers[entry.order] = marker;
+  });
+
+  routeLine = L.polyline(routeCoords, { color: '#9aa5b8', weight: 2, dashArray: '4 6', opacity: .7 }).addTo(map);
+}
+
+function flyToEntry(entry){
+  const coords = activeCoords(entry);
+  map.flyTo(coords, 10, { duration: 1.1 });
+  if (markers[entry.order]) markers[entry.order].openPopup();
+}
+
+/* ==========================================================================
+   PAINEL LATERAL
+   ========================================================================== */
+const chapterSelect = document.getElementById('chapterSelect');
+const timelineEl = document.getElementById('timeline');
+const contentEl = document.getElementById('content');
+const prevBtn = document.getElementById('prevBtn');
+const nextBtn = document.getElementById('nextBtn');
+
+function populateChapterSelect(){
+  chapterSelect.innerHTML = biblicalData.map((e,i) =>
+    `<option value="${i}">Js ${e.chapter} — ${e.title}</option>`).join('');
+}
+
+function populateTimeline(){
+  timelineEl.innerHTML = biblicalData.map((e,i) =>
+    `<div class="tl-item" data-index="${i}"><b>${e.chapter}</b>${e.ancientName.split(' ')[0].split('(')[0]}</div>`
+  ).join('');
+  timelineEl.querySelectorAll('.tl-item').forEach(el => {
+    el.addEventListener('click', () => selectByIndex(parseInt(el.dataset.index)));
+  });
+}
+
+function renderCard(index){
+  const entry = biblicalData[index];
+  const prev = index > 0 ? biblicalData[index-1] : null;
+  let distanceBlock = '';
+  if (prev){
+    const km = haversineKm(activeCoords(prev), activeCoords(entry));
+    const hours = km / 4; // ritmo médio de caminhada, terreno variável
+    const days = hours / 8; // jornada de ~8h de marcha
+    distanceBlock = `
+      <div class="dist-row">
+        <div><span>Distância (linha reta)</span>${km.toFixed(1)} km</div>
+        <div><span>A pé (~4 km/h)</span>${hours < 1 ? Math.round(hours*60)+' min' : hours.toFixed(1)+' h'}</div>
+        <div><span>Em jornadas (~8h/dia)</span>${days < 1 ? '< 1 dia' : Math.ceil(days)+' dia(s)'}</div>
+      </div>`;
+  } else {
+    distanceBlock = `<div class="dist-row"><div><span>Relação espacial</span>Ponto de partida da narrativa (sem local anterior)</div></div>`;
+  }
+
+  const hasHyp = entry.hypotheses && entry.hypotheses.length > 1;
+  let hypBlock = '';
+  if (hasHyp){
+    const activeId = selectedHyp[entry.order] || entry.hypotheses[0].id;
+    hypBlock = `
+      <section class="block">
+        <h3>Hipóteses de localização</h3>
+        <div class="hyp-select">
+          ${entry.hypotheses.map(h => `
+            <div class="hyp-option ${h.id===activeId?'selected':''}" data-hyp="${h.id}">
+              <div class="hyp-dot" style="background:${h.color}"></div>
+              <div><strong>${h.label}</strong><p>${h.description}</p></div>
+            </div>`).join('')}
+        </div>
+      </section>`;
+  }
+
+  contentEl.innerHTML = `
+    <span class="badge ${hasHyp?'warn':''}">${hasHyp ? 'Localização debatida' : 'Localização consensual'}</span>
+    <h2 class="card-title">${entry.title}</h2>
+    <div class="verses">Josué ${entry.verses}</div>
+
+    <div class="names">
+      <div class="name-box"><span>Nome bíblico</span><strong>${entry.ancientName}</strong></div>
+      <div class="name-box"><span>Local hoje</span><strong>${entry.modernName}</strong><br><small style="color:var(--text-dim)">${entry.country}</small></div>
+    </div>
+
+    <section class="block"><h3>Contexto da época</h3><p>${entry.era}</p></section>
+    <section class="block"><h3>Contexto atual</h3><p>${entry.modern}</p></section>
+    <section class="block"><h3>Arqueologia</h3><p>${entry.archaeology}</p></section>
+    <section class="block"><h3>Relação espacial com etapa anterior</h3>${distanceBlock}</section>
+    ${hypBlock}
+  `;
+
+  if (hasHyp){
+    contentEl.querySelectorAll('.hyp-option').forEach(el => {
+      el.addEventListener('click', () => {
+        selectedHyp[entry.order] = el.dataset.hyp;
+        buildMap();
+        renderCard(index);
+        flyToEntry(entry);
+      });
+    });
+  }
+}
+
+function updateActiveStates(index){
+  chapterSelect.value = index;
+  timelineEl.querySelectorAll('.tl-item').forEach(el =>
+    el.classList.toggle('active', parseInt(el.dataset.index) === index));
+  prevBtn.disabled = index === 0;
+  nextBtn.disabled = index === biblicalData.length - 1;
+  const active = timelineEl.querySelector('.tl-item.active');
+  if (active) active.scrollIntoView({ behavior:'smooth', inline:'center', block:'nearest' });
+}
+
+function selectByIndex(index){
+  currentIndex = index;
+  const entry = biblicalData[index];
+  renderCard(index);
+  updateActiveStates(index);
+  flyToEntry(entry);
+}
+
+function selectByOrder(order){
+  const idx = biblicalData.findIndex(e => e.order === order);
+  if (idx >= 0) selectByIndex(idx);
+}
+
+chapterSelect.addEventListener('change', () => selectByIndex(parseInt(chapterSelect.value)));
+prevBtn.addEventListener('click', () => { if (currentIndex > 0) selectByIndex(currentIndex - 1); });
+nextBtn.addEventListener('click', () => { if (currentIndex < biblicalData.length - 1) selectByIndex(currentIndex + 1); });
+
+/* ==========================================================================
+   INICIALIZAÇÃO
+   ========================================================================== */
+populateChapterSelect();
+populateTimeline();
+buildMap();
+selectByIndex(0);
+map.fitBounds(routeLine.getBounds(), { padding: [40,40] });
+</script>
+</body>
+</html>
